@@ -1,9 +1,9 @@
+name: mongo-sharding
 services:
 
-  //сервер конфигурации
-  configSrv:
+  mongo_config:
     image: dh-mirror.gitverse.ru/mongo:latest
-    container_name: mongoConfigSrv
+    container_name: mongo_config
     restart: always
     ports:
       - "27017:27017"
@@ -11,10 +11,11 @@ services:
       app-network:
         ipv4_address: 173.17.0.10
     volumes:
-      - config-data:/data/db
+      - config-data-db:/data/db
+      - config-data-config:/data/configdb
     command:
       [
-        "--configsvr",  //запуск в режиме конфигурации
+        "--configsvr",
         "--replSet",
         "config_server",
         "--bind_ip_all",
@@ -25,11 +26,10 @@ services:
       test: [ "CMD", "mongo", "--eval", "db.adminCommand('ping')" ]
       interval: 5s
       start_period: 10s
-
-  //1-й шард
-  shard1:
+      
+  mongo_shard1:
     image: dh-mirror.gitverse.ru/mongo:latest
-    container_name: mongoShard1
+    container_name: mongo_shard1
     restart: always
     ports:
       - "27018:27018"
@@ -37,12 +37,13 @@ services:
       app-network:
         ipv4_address: 173.17.0.9
     volumes:
-      - shard1-data:/data/db
+      - shard1-data-db:/data/db
+      - shard1-data-config:/data/configdb
     command:
       [
-        "--shardsvr", //запуск в режиме шардинга
+        "--shardsvr",
         "--replSet",
-        "shard1", //название реплики
+        "shard1",
         "--bind_ip_all",
         "--port",
         "27018"
@@ -52,10 +53,9 @@ services:
       interval: 5s
       start_period: 10s
 
-  //2-й шард
-  shard2:
+  mongo_shard2:
     image: dh-mirror.gitverse.ru/mongo:latest
-    container_name: mongoShard2
+    container_name: mongo_shard2
     restart: always
     ports:
       - "27019:27019"
@@ -63,13 +63,14 @@ services:
       app-network:
         ipv4_address: 173.17.0.8
     volumes:
-      - shard2-data:/data/db
+      - shard2-data-db:/data/db
+      - shard2-data-config:/data/configdb
     command:
       [
-        "--shardsvr", //запуск в режиме шардинга
+        "--shardsvr",
         "--replSet",
-        "shard2", //название реплик
-        "--bind_ip_all", // обратите внимание - она отличается от реплики 1-го шарда
+        "shard2",
+        "--bind_ip_all",
         "--port",
         "27019"
       ]
@@ -78,10 +79,12 @@ services:
       interval: 5s
       start_period: 10s
 
-  //роутер
-  mongos_router:
+  mongo_router:
     image: dh-mirror.gitverse.ru/mongo:latest
-    container_name: mongosRouter
+    container_name: mongo_router
+    volumes:
+      - router-data-db:/data/db
+      - router-data-config:/data/configdb
     restart: always
     ports:
       - "27020:27020"
@@ -90,9 +93,9 @@ services:
         ipv4_address: 173.17.0.7
     command:
       [
-        "mongos", //обычная mongo в режиме роутера
-        **"--configdb",
-        "config_server/configSrv:27017",** //передача данных сервера конфигурации
+        "mongos",
+        "--configdb",
+        "config_server/mongo_config:27017",
         "--bind_ip_all",
         "--port",
         "27020"
@@ -109,11 +112,14 @@ services:
       dockerfile: Dockerfile
     image: kazhem/pymongo_api:1.0.0
     depends_on:
-      - mongosRouter
+      - mongo_router
     ports:
       - 8080:8080
+    networks:
+      app-network:
+        ipv4_address: 173.17.0.6
     environment:
-      MONGODB_URL: "mongodb://mongosRouter"
+      MONGODB_URL: "mongodb://mongo_router:27020/"
       MONGODB_DATABASE_NAME: "somedb"
 
 networks:
@@ -125,6 +131,15 @@ networks:
         - subnet: 173.17.0.0/16
 
 volumes:
-  config-data:
-  shard1-data:
-  shard2-data:
+  config-data-db:
+  config-data-config:
+  
+  shard1-data-db:
+  shard1-data-config:
+  
+  shard2-data-db:
+  shard2-data-config:
+  
+  router-data-db:
+  router-data-config:
+  
